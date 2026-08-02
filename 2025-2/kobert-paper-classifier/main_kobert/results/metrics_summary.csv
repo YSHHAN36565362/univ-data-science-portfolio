@@ -1,0 +1,10 @@
+accuracy	0.95970696
+precision_macro	0.956204628
+recall_macro	0.934923763
+f1_macro	0.944832087
+precision_micro	0.95970696
+recall_micro	0.95970696
+f1_micro	0.95970696
+precision_weighted	0.959628737
+recall_weighted	0.95970696
+f1_weighted	0.959236263
