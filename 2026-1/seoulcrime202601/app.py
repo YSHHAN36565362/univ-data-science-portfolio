@@ -1107,18 +1107,16 @@ elif menu == "🔮 CCTV 예측 시뮬레이터":
             <div class="sim-note">
                 ※ 본 예측은 CCTV 설치 밀도와 범죄율 간의 <b>선형 회귀 추정</b>입니다.<br>
                 실제 결과는 지역 특성, 경찰 배치, 인구 밀도 등 다양한 요인에 의해 달라질 수 있습니다.<br>
-                <span style="color:#22d3ee;">🔬 한윤수 팀원의 ML 모델(XGBoost/Random Forest) 연동 시 더 정확한 예측이 가능합니다.</span>
             </div>
         </div>
         ''', unsafe_allow_html=True)
 
     # ============================================================
-    # 황준연 ML 모델 결과 연동
+    
     # ============================================================
     st.markdown('<hr class="divider">', unsafe_allow_html=True)
     st.markdown('''
     <div class="panel-card">
-        <div class="panel-title">🔬 ML 모델 기반 CCTV 추가 설치 우선순위 분석 (황준연)</div>
         <div style="font-size:13px;color:#94a3b8;line-height:1.7;">
             범죄율, CCTV 밀도, CCTV 1대당 범죄 부담을 종합한 우선순위 점수 기반 분류 모델 결과입니다.<br>
             가중치: 범죄율 40% + CCTV 밀도 부족도 40% + CCTV 1대당 범죄 부담 20%
@@ -1245,7 +1243,7 @@ elif menu == "🔮 CCTV 예측 시뮬레이터":
         st.dataframe(display_df, use_container_width=True)
 
     # ============================================================
-    # 한윤수 XGBoost 모델 결과 연동
+    
     # ============================================================
     st.markdown('<hr class="divider">', unsafe_allow_html=True)
     st.markdown('''
@@ -1264,7 +1262,6 @@ elif menu == "🔮 CCTV 예측 시뮬레이터":
         xgb_seoul = xgb_df[xgb_df['자치구'].isin(seoul_gu_list)].copy()
         xgb_loaded = True
     except Exception as e:
-        st.warning(f"한윤수 모델 데이터 로딩 실패: {e}")
         xgb_loaded = False
 
     if xgb_loaded and len(xgb_seoul) > 0:
