@@ -11,6 +11,9 @@ import numpy as np
 import xgboost as xgb
 from sklearn.preprocessing import MinMaxScaler
 from google import genai
+import pandas as pd
+df = pd.read_csv('자치구별 범죄율 검거율 5개년.csv', encoding='cp949', header=1)
+print(df.head())
 
 # ============================================================
 # 페이지 설정 & 커스텀 CSS (서울안전누리 스타일 다크 테마)
