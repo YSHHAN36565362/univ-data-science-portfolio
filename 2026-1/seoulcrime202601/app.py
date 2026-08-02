@@ -1248,7 +1248,7 @@ elif menu == "🔮 CCTV 예측 시뮬레이터":
     st.markdown('<hr class="divider">', unsafe_allow_html=True)
     st.markdown('''
     <div class="panel-card">
-        <div class="panel-title">🤖 XGBoost 범죄 위험도 예측 모델 분석 (한윤수)</div>
+        <div class="panel-title">🤖 XGBoost 범죄 위험도 예측 모델 분석 ()</div>
         <div style="font-size:13px;color:#94a3b8;line-height:1.7;">
             야간 유동인구, 노후주택 비율, 고시원 수, 조도 지수 등 다변량 환경 요인을 반영한 XGBoost 모델 기반 예측 결과입니다.
         </div>
