@@ -575,7 +575,6 @@ with st.sidebar:
     st.markdown(f'''
     <div style="font-size:11px;color:#475569;line-height:1.6;">
         <span class="live-dot"></span> 데이터 업데이트: 2025.12<br>
-        학번: 202384064, 202004244, 202384068<br>
         캡스톤디자인 프로젝트
     </div>
     ''', unsafe_allow_html=True)
