@@ -1497,7 +1497,7 @@ elif menu == "📉 범죄 추이 예측":
     try:
         for enc in ['cp949', 'euc-kr', 'utf-8', 'utf-8-sig']:
             try:
-                trend_raw = pd.read_csv('자치구별 범죄율 검거율 5개년.csv', encoding=enc)
+                trend_raw = pd.read_csv(_p('자치구별 범죄율 검거율 5개년.csv'), encoding=enc)
                 break
             except:
                 continue
