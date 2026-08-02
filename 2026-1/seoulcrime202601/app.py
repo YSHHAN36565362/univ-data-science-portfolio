@@ -1,3 +1,5 @@
+
+import os
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -11,6 +13,13 @@ import numpy as np
 import xgboost as xgb
 from sklearn.preprocessing import MinMaxScaler
 from google import genai
+
+# repo 루트 기준, app.py가 있는 폴더까지의 경로
+DATA_DIR = "2026-1/seoulcrime202601"
+
+def _p(filename: str) -> str:
+    """DATA_DIR과 파일명을 합쳐 repo 루트 기준 전체 경로를 만든다"""
+    return os.path.join(DATA_DIR, filename)
 
 # ============================================================
 # 페이지 설정 & 커스텀 CSS (서울안전누리 스타일 다크 테마)
@@ -352,18 +361,18 @@ section[data-testid="stSidebar"] label {
 def load_data():
     # --- 범죄율/검거율 (2019~2023) ---
     try:
-        crime = pd.read_csv('자치구별 범죄율 검거율 5개년.csv', encoding='utf-8', header=1)
+        crime = pd.read_csv(_p('자치구별 범죄율 검거율 5개년.csv'), encoding='utf-8', header=1)
     except:
-        crime = pd.read_csv('자치구별 범죄율 검거율 5개년.csv', encoding='cp949', header=1)
+        crime = pd.read_csv(_p('자치구별 범죄율 검거율 5개년.csv'), encoding='cp949', header=1)
     crime.columns = ['자치구별','2019_범죄율','2019_검거율','2020_범죄율','2020_검거율',
                      '2021_범죄율','2021_검거율','2022_범죄율','2022_검거율','2023_범죄율','2023_검거율']
     crime = crime.dropna(subset=['자치구별'])
 
     # --- 발생/검거 건수 (2019~2023) ---
     try:
-        occur = pd.read_csv('전국 발생 검거 수.csv', encoding='utf-8', header=1)
+        occur = pd.read_csv(_p('전국 발생 검거 수.csv'), encoding='utf-8', header=1)
     except:
-        occur = pd.read_csv('전국 발생 검거 수.csv', encoding='cp949', header=1)
+        occur = pd.read_csv(_p('전국 발생 검거 수.csv'), encoding='cp949', header=1)
     occur.columns = ['자치구별','2019_발생','2019_검거','2020_발생','2020_검거',
                      '2021_발생','2021_검거','2022_발생','2022_검거','2023_발생','2023_검거']
     occur = occur.dropna(subset=['자치구별'])
@@ -373,7 +382,7 @@ def load_data():
 
     # --- 2024년 범죄 데이터 추가 (crime_seoul.csv) ---
     try:
-        crime_2024_raw = pd.read_csv('crime_seoul.csv', encoding='utf-8')
+        crime_2024_raw = pd.read_csv(_p('crime_seoul.csv'), encoding='utf-8')
         crime_2024_list = []
         for _, row in crime_2024_raw.iloc[4:].iterrows():  # skip header rows + 소계
             gu = str(row.iloc[1]).strip()
@@ -389,7 +398,7 @@ def load_data():
         st.warning(f"crime_seoul.csv 로딩 실패: {e}")
 
     # --- CCTV ---
-    cctv = pd.read_csv('cctv_clean.csv', encoding='utf-8-sig')
+    cctv = pd.read_csv(_p('cctv_clean.csv'), encoding='utf-8-sig')
     cctv.columns = ['자치구','총계','2016년이전','2017년','2018년','2019년','2020년',
                     '2021년','2022년','2023년','2024년','2025년']
     cctv = cctv[cctv['자치구'] != '계']
@@ -400,9 +409,9 @@ def load_data():
 
     # --- 인구 (2019~2023) ---
     try:
-        pop = pd.read_csv('인구 수.csv', encoding='utf-8', header=1)
+        pop = pd.read_csv(_p('인구 수.csv'), encoding='utf-8', header=1)
     except:
-        pop = pd.read_csv('인구 수.csv', encoding='cp949', header=1)
+        pop = pd.read_csv(_p('인구 수.csv'), encoding='cp949', header=1)
     pop.columns = ['자치구별','2019_인구','2020_인구','2021_인구','2022_인구','2023_인구']
     pop = pop.dropna(subset=['자치구별'])
     pop = pop[pop['자치구별'] != '서울특별시']
@@ -414,7 +423,7 @@ def load_data():
         # 인코딩 자동 감지
         for enc in ['utf-8', 'utf-8-sig', 'cp949', 'euc-kr']:
             try:
-                pop_2025_raw = pd.read_csv('population_seoul.csv', encoding=enc)
+                pop_2025_raw = pd.read_csv(_p('population_seoul.csv'), encoding=enc)
                 break
             except:
                 continue
@@ -448,7 +457,7 @@ def load_data():
     try:
         for enc in ['utf-8', 'utf-8-sig', 'cp949', 'euc-kr']:
             try:
-                area_raw = pd.read_csv('area_seoul.csv', encoding=enc)
+                area_raw = pd.read_csv(_p('area_seoul.csv'), encoding=enc)
                 break
             except:
                 continue
@@ -1120,7 +1129,7 @@ elif menu == "🔮 CCTV 예측 시뮬레이터":
 
     # 모델 결과 CSV 로딩
     try:
-        model_df = pd.read_csv('cctv_model_result_revised.csv', encoding='utf-8-sig')
+        model_df = pd.read_csv(_p('cctv_model_result_revised.csv'), encoding='utf-8-sig')
         model_loaded = True
     except Exception as e:
         st.warning(f"모델 결과 파일 로딩 실패: {e}")
@@ -1250,7 +1259,7 @@ elif menu == "🔮 CCTV 예측 시뮬레이터":
     ''', unsafe_allow_html=True)
 
     try:
-        xgb_df = pd.read_csv('Seoul_Crime_Model_Data.csv', encoding='utf-8-sig')
+        xgb_df = pd.read_csv(_p('Seoul_Crime_Model_Data.csv'), encoding='utf-8-sig')
         # 서울 25개 자치구만 필터링
         seoul_gu_list = list(gu_coords.keys())
         xgb_seoul = xgb_df[xgb_df['자치구'].isin(seoul_gu_list)].copy()
@@ -1362,7 +1371,7 @@ elif menu == "🔍 범죄 유형별 분석":
 
     # crime_seoul.csv에서 유형별 데이터 파싱
     try:
-        crime_type_raw = pd.read_csv('crime_seoul.csv', encoding='utf-8-sig')
+        crime_type_raw = pd.read_csv(_p('crime_seoul.csv'), encoding='utf-8-sig')
         crime_type_data = crime_type_raw.iloc[3:].copy()
         crime_type_df = pd.DataFrame({
             '자치구': crime_type_data.iloc[:, 1].astype(str).str.strip(),
