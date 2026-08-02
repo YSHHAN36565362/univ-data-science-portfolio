@@ -346,32 +346,72 @@ section[data-testid="stSidebar"] label {
 
 
 # ============================================================
-# 데이터 로딩
+# 데이터 로딩 (기존 구조 유지)
 # ============================================================
 @st.cache_data(ttl=0)
 def load_data():
-    # * 수정: 데이터 오염이 있는 5개년 과거 파일(범죄율, 발생검거수, 인구수)을 로드하는 코드를 모두 삭제했습니다.
-    # 대신 2024년 최신 데이터(crime_seoul, population_seoul)를 바탕으로 데이터프레임을 처음부터 구축하도록 변경했습니다.
+    # --- 범죄율/검거율 (2019~2023) ---
+    try:
+        crime = pd.read_csv('자치구별 범죄율 검거율 5개년.csv', encoding='utf-8', header=1)
+    except:
+        crime = pd.read_csv('자치구별 범죄율 검거율 5개년.csv', encoding='cp949', header=1)
+    crime.columns = ['자치구별','2019_범죄율','2019_검거율','2020_범죄율','2020_검거율',
+                     '2021_범죄율','2021_검거율','2022_범죄율','2022_검거율','2023_범죄율','2023_검거율']
+    crime = crime.dropna(subset=['자치구별'])
 
-    # --- 1. 최신 2024년 범죄 발생/검거 건수 (crime_seoul.csv) ---
-    occur = pd.DataFrame()
+    # --- 발생/검거 건수 (2019~2023) ---
+    try:
+        occur = pd.read_csv('전국 발생 검거 수.csv', encoding='utf-8', header=1)
+    except:
+        occur = pd.read_csv('전국 발생 검거 수.csv', encoding='cp949', header=1)
+    occur.columns = ['자치구별','2019_발생','2019_검거','2020_발생','2020_검거',
+                     '2021_발생','2021_검거','2022_발생','2022_검거','2023_발생','2023_검거']
+    occur = occur.dropna(subset=['자치구별'])
+    occur = occur[occur['자치구별'] != '소계']
+    for col in occur.columns[1:]:
+        occur[col] = pd.to_numeric(occur[col].astype(str).str.replace(',',''), errors='coerce')
+
+    # --- 2024년 범죄 데이터 추가 (crime_seoul.csv) ---
     try:
         crime_2024_raw = pd.read_csv('crime_seoul.csv', encoding='utf-8')
         crime_2024_list = []
-        for _, row in crime_2024_raw.iloc[4:].iterrows(): 
+        for _, row in crime_2024_raw.iloc[4:].iterrows():  # skip header rows + 소계
             gu = str(row.iloc[1]).strip()
             if gu == '소계' or gu == '자치구별(2)':
                 continue
             oc = int(str(row.iloc[2]).replace(',',''))
             ar = int(str(row.iloc[3]).replace(',',''))
             crime_2024_list.append({'자치구별': gu, '2024_발생': oc, '2024_검거': ar})
-        occur = pd.DataFrame(crime_2024_list)
+        crime_2024_df = pd.DataFrame(crime_2024_list)
+        # 발생/검거 건수에 2024년 추가
+        occur = pd.merge(occur, crime_2024_df, on='자치구별', how='left')
     except Exception as e:
         st.warning(f"crime_seoul.csv 로딩 실패: {e}")
 
-    # --- 2. 최신 2024년 인구 (population_seoul.csv) ---
-    pop = pd.DataFrame()
+    # --- CCTV ---
+    cctv = pd.read_csv('cctv_clean.csv', encoding='utf-8-sig')
+    cctv.columns = ['자치구','총계','2016년이전','2017년','2018년','2019년','2020년',
+                    '2021년','2022년','2023년','2024년','2025년']
+    cctv = cctv[cctv['자치구'] != '계']
+    cctv = cctv.dropna(subset=['자치구'])
+    cctv['자치구'] = cctv['자치구'].str.replace(' ', '')
+    for col in cctv.columns[1:]:
+        cctv[col] = pd.to_numeric(cctv[col].astype(str).str.replace(',',''), errors='coerce')
+
+    # --- 인구 (2019~2023) ---
     try:
+        pop = pd.read_csv('인구 수.csv', encoding='utf-8', header=1)
+    except:
+        pop = pd.read_csv('인구 수.csv', encoding='cp949', header=1)
+    pop.columns = ['자치구별','2019_인구','2020_인구','2021_인구','2022_인구','2023_인구']
+    pop = pop.dropna(subset=['자치구별'])
+    pop = pop[pop['자치구별'] != '서울특별시']
+    for col in pop.columns[1:]:
+        pop[col] = pd.to_numeric(pop[col].astype(str).str.replace(',',''), errors='coerce')
+
+    # --- 2025년 인구 데이터 추가 (population_seoul.csv) → 2024년 분석에 사용 ---
+    try:
+        # 인코딩 자동 감지
         for enc in ['utf-8', 'utf-8-sig', 'cp949', 'euc-kr']:
             try:
                 pop_2025_raw = pd.read_csv('population_seoul.csv', encoding=enc)
@@ -385,33 +425,25 @@ def load_data():
             gu = parts[1] if len(parts) >= 2 else parts[0]
             population = int(str(row.iloc[1]).replace(',',''))
             pop_2025_list.append({'자치구별': gu, '2024_인구': population})
-        pop = pd.DataFrame(pop_2025_list)
+        pop_2025_df = pd.DataFrame(pop_2025_list)
+        pop = pd.merge(pop, pop_2025_df, on='자치구별', how='left')
     except Exception as e:
         st.warning(f"population_seoul.csv 로딩 실패: {e}")
 
-    # --- 3. 범죄율/검거율 (crime) 데이터프레임 통합 계산 ---
-    # * 수정: 5개년 파일 없이 최신 occur와 pop 데이터를 합쳐서 2024년 범죄율과 검거율을 직접 계산합니다.
-    crime = pd.DataFrame()
-    if not occur.empty and not pop.empty:
-        crime = pd.merge(occur, pop, on='자치구별', how='inner')
-        crime['2024_범죄율'] = (crime['2024_발생'] / crime['2024_인구'] * 100).round(2)
-        crime['2024_검거율'] = (crime['2024_검거'] / crime['2024_발생'] * 100).round(2)
-
-    # --- CCTV (정상 파일이므로 유지) ---
-    cctv = pd.DataFrame()
+    # --- 2024년 범죄율/검거율 계산하여 crime 테이블에 추가 ---
     try:
-        cctv = pd.read_csv('cctv_clean.csv', encoding='utf-8-sig')
-        cctv.columns = ['자치구','총계','2016년이전','2017년','2018년','2019년','2020년',
-                        '2021년','2022년','2023년','2024년','2025년']
-        cctv = cctv[cctv['자치구'] != '계']
-        cctv = cctv.dropna(subset=['자치구'])
-        cctv['자치구'] = cctv['자치구'].str.replace(' ', '')
-        for col in cctv.columns[1:]:
-            cctv[col] = pd.to_numeric(cctv[col].astype(str).str.replace(',',''), errors='coerce')
+        merged_2024 = pd.merge(
+            occur[['자치구별','2024_발생','2024_검거']].dropna(),
+            pop[['자치구별','2024_인구']].dropna(),
+            on='자치구별', how='inner'
+        )
+        merged_2024['2024_범죄율'] = (merged_2024['2024_발생'] / merged_2024['2024_인구'] * 100).round(2)
+        merged_2024['2024_검거율'] = (merged_2024['2024_검거'] / merged_2024['2024_발생'] * 100).round(2)
+        crime = pd.merge(crime, merged_2024[['자치구별','2024_범죄율','2024_검거율']], on='자치구별', how='left')
     except Exception as e:
-        st.warning(f"cctv_clean.csv 로딩 실패: {e}")
+        st.warning(f"2024 범죄율 계산 실패: {e}")
 
-    # --- 면적 데이터 (area_seoul.csv 정상 파일이므로 유지) ---
+    # --- 면적 데이터 (area_seoul.csv) ---
     area = pd.DataFrame()
     try:
         for enc in ['utf-8', 'utf-8-sig', 'cp949', 'euc-kr']:
@@ -466,6 +498,7 @@ def get_risk_level(rate):
     return '안전', '#10b981', '🟢'
 
 def plotly_dark_layout(fig, height=450):
+    """공통 Plotly 다크 테마 레이아웃"""
     fig.update_layout(
         plot_bgcolor='rgba(0,0,0,0)',
         paper_bgcolor='rgba(0,0,0,0)',
@@ -479,6 +512,7 @@ def plotly_dark_layout(fig, height=450):
     return fig
 
 def make_kpi_html(cards):
+    """KPI 카드 그리드 HTML 생성"""
     html = '<div class="kpi-container">'
     for label, value, sub, color in cards:
         html += f'''
@@ -491,6 +525,7 @@ def make_kpi_html(cards):
     return html
 
 def make_ranking_html(title, items, rank_type='danger'):
+    """랭킹 리스트 HTML"""
     max_val = items[0][1] if items else 1
     html = f'<div class="panel-title">{title}</div>'
     for i, (name, val) in enumerate(items):
@@ -518,16 +553,14 @@ with st.sidebar:
     </div>
     ''', unsafe_allow_html=True)
 
-    # * 수정: 5개년 추이 데이터가 삭제되었으므로 메뉴에서 "범죄 추이 예측" 항목을 완전히 제거했습니다.
     menu = st.radio(
         "메뉴",
-        ["🗺️ 안전 지도", "📊 범죄 현황", "📹 CCTV 현황", "📈 통계 비교", "🔮 CCTV 예측 시뮬레이터", "🔍 범죄 유형별 분석", "🧠 AI 심층 분석"],
+        ["🗺️ 안전 지도", "📊 범죄 현황", "📹 CCTV 현황", "📈 통계 비교", "🔮 CCTV 예측 시뮬레이터", "🔍 범죄 유형별 분석", "📉 범죄 추이 예측", "🧠 AI 심층 분석"],
         label_visibility="collapsed"
     )
 
     st.markdown('<hr class="divider">', unsafe_allow_html=True)
-    # * 수정: 과거 연도 데이터가 삭제되었으므로 선택 가능한 연도를 2024년 단일 항목으로 제한했습니다.
-    year = st.selectbox("📅 분석 연도", [2024])
+    year = st.selectbox("📅 분석 연도", [2024, 2023, 2022, 2021, 2020, 2019])
 
     st.markdown('<hr class="divider">', unsafe_allow_html=True)
     st.markdown(f'''
@@ -540,12 +573,23 @@ with st.sidebar:
 
 
 # ============================================================
-# 공통 변수 (2024년 기준으로 고정)
+# 공통 변수
 # ============================================================
 col_o = f'{year}_발생'
 col_r = f'{year}_범죄율'
 col_a = f'{year}_검거율'
 col_p = f'{year}_인구'
+
+# 선택한 연도의 컬럼이 데이터에 없으면 가장 가까운 연도로 대체
+if col_r not in crime.columns:
+    col_r = '2023_범죄율'
+if col_a not in crime.columns:
+    col_a = '2023_검거율'
+if col_o not in occur.columns:
+    col_o = '2023_발생'
+if col_p not in pop.columns:
+    col_p = '2023_인구'
+
 
 # ============================================================
 # 헤더 배너
@@ -571,6 +615,7 @@ st.markdown(f'''
 # ============================================================
 if menu == "🗺️ 안전 지도":
 
+    # KPI 카드
     total_crime = int(occur[col_o].sum()) if col_o in occur.columns else 0
     avg_rate = round(crime[col_r].mean(), 2) if col_r in crime.columns else 0
     avg_arrest = round(crime[col_a].mean(), 1) if col_a in crime.columns else 0
@@ -583,6 +628,7 @@ if menu == "🗺️ 안전 지도":
         ('📹 CCTV 총 설치', f'{total_cctv:,}대', '2025년 12월 기준 누적', 'blue'),
     ]), unsafe_allow_html=True)
 
+    # 지도 레이어 선택
     layer = st.radio(
         "지도 레이어",
         ["범죄율", "범죄 발생 건수", "CCTV 밀도", "검거율"],
@@ -590,15 +636,18 @@ if menu == "🗺️ 안전 지도":
         label_visibility="collapsed"
     )
 
+    # 지도 + 사이드 패널
     map_col, side_col = st.columns([2, 1])
 
     with map_col:
+        # 다크 테마 지도 생성
         m = folium.Map(
             location=[37.5665, 126.9780],
             zoom_start=11,
             tiles='CartoDB dark_matter'
         )
 
+        # Choropleth 레이어
         if layer == "범죄율" and col_r in crime.columns:
             folium.Choropleth(
                 geo_data=seoul_geo, data=crime,
@@ -632,6 +681,7 @@ if menu == "🗺️ 안전 지도":
                 legend_name=f'{year}년 검거율(%)'
             ).add_to(m)
 
+        # 자치구별 팝업 마커
         for gu, coord in gu_coords.items():
             rate_val = crime.loc[crime['자치구별']==gu, col_r].values
             rate = float(rate_val[0]) if len(rate_val) > 0 else 0
@@ -676,6 +726,7 @@ if menu == "🗺️ 안전 지도":
         st_folium(m, width=None, height=550, returned_objects=[])
 
     with side_col:
+        # 위험/안전 랭킹
         if col_r in crime.columns:
             sorted_crime = crime.sort_values(col_r, ascending=False)
             top5 = [(row['자치구별'], row[col_r]) for _, row in sorted_crime.head(5).iterrows()]
@@ -690,6 +741,7 @@ if menu == "🗺️ 안전 지도":
 # ============================================================
 elif menu == "📊 범죄 현황":
 
+    # KPI
     total_crime = int(occur[col_o].sum()) if col_o in occur.columns else 0
     max_gu = occur.loc[occur[col_o].idxmax(), '자치구별'] if col_o in occur.columns else '-'
     max_val = int(occur[col_o].max()) if col_o in occur.columns else 0
@@ -702,6 +754,7 @@ elif menu == "📊 범죄 현황":
         ('📊 평균 범죄율', f'{crime[col_r].mean():.2f}%' if col_r in crime.columns else '-', '25개 자치구 평균', 'blue'),
     ]), unsafe_allow_html=True)
 
+    # 범죄 발생 건수 차트
     if col_o in occur.columns:
         st.markdown('<div class="panel-card"><div class="panel-title">📊 자치구별 범죄 발생 건수</div></div>', unsafe_allow_html=True)
         df_sorted = occur.sort_values(col_o, ascending=True)
@@ -714,6 +767,7 @@ elif menu == "📊 범죄 현황":
         fig1.update_layout(yaxis=dict(dtick=1), coloraxis_showscale=False)
         st.plotly_chart(fig1, use_container_width=True)
 
+    # 범죄율 차트
     if col_r in crime.columns:
         st.markdown('<div class="panel-card"><div class="panel-title">📊 자치구별 범죄율 (%)</div></div>', unsafe_allow_html=True)
         df_sorted2 = crime.sort_values(col_r, ascending=False)
@@ -726,8 +780,23 @@ elif menu == "📊 범죄 현황":
         fig2.update_layout(xaxis_tickangle=-45, coloraxis_showscale=False)
         st.plotly_chart(fig2, use_container_width=True)
 
-    # * 수정: 5개년 데이터가 없으므로 기존의 '연도별 범죄 발생 추이' 차트는 삭제했습니다.
+    # 연도별 추이
+    st.markdown('<div class="panel-card"><div class="panel-title">📈 연도별 범죄 발생 추이 (상위 5개 구)</div></div>', unsafe_allow_html=True)
+    year_cols = ['2019_발생','2020_발생','2021_발생','2022_발생','2023_발생']
+    if '2024_발생' in occur.columns:
+        year_cols.append('2024_발생')
+    occur_years = occur[['자치구별'] + year_cols].copy()
+    latest_col = year_cols[-1]
+    top5_names = occur_years.nlargest(5, latest_col)['자치구별'].tolist()
+    top5_m = occur_years[occur_years['자치구별'].isin(top5_names)].melt(
+        id_vars='자치구별', var_name='연도', value_name='발생건수'
+    )
+    top5_m['연도'] = top5_m['연도'].str.replace('_발생','')
+    fig3 = px.line(top5_m, x='연도', y='발생건수', color='자치구별', markers=True)
+    plotly_dark_layout(fig3, height=400)
+    st.plotly_chart(fig3, use_container_width=True)
 
+    # 검거율
     if col_a in crime.columns:
         st.markdown('<div class="panel-card"><div class="panel-title">🔍 자치구별 검거율 (%)</div></div>', unsafe_allow_html=True)
         fig4 = px.bar(
@@ -749,20 +818,14 @@ elif menu == "📹 CCTV 현황":
     max_cctv_gu = cctv.loc[cctv['총계'].idxmax(), '자치구']
     min_cctv_gu = cctv.loc[cctv['총계'].idxmin(), '자치구']
 
+    # 인구 천명당 CCTV 계산
     cp = cctv[['자치구','총계']].copy().rename(columns={'자치구':'자치구별'})
     cp['자치구별'] = cp['자치구별'].str.strip()
     pp = pop.copy()
     pp['자치구별'] = pp['자치구별'].str.strip()
-    
-    # * 수정: 기존에는 2023년 인구를 사용했으나, 이제는 최신 2024년 인구를 기준으로 인구 천명당 CCTV를 계산하도록 수정했습니다.
-    if '2024_인구' in pp.columns:
-        mg = pd.merge(cp, pp[['자치구별','2024_인구']], on='자치구별', how='inner')
-        mg['인구천명당_CCTV'] = (mg['총계'] / mg['2024_인구'] * 1000).round(2)
-        avg_per1k = mg['인구천명당_CCTV'].mean()
-    else:
-        mg = cp.copy()
-        mg['인구천명당_CCTV'] = 0
-        avg_per1k = 0
+    mg = pd.merge(cp, pp[['자치구별','2023_인구']], on='자치구별', how='inner')
+    mg['인구천명당_CCTV'] = (mg['총계'] / mg['2023_인구'] * 1000).round(2)
+    avg_per1k = mg['인구천명당_CCTV'].mean()
 
     st.markdown(make_kpi_html([
         ('📹 CCTV 총 설치', f'{total_cctv:,}대', '2025년 12월 기준', 'cyan'),
@@ -771,6 +834,7 @@ elif menu == "📹 CCTV 현황":
         ('👥 천명당 CCTV 평균', f'{avg_per1k:.1f}대', '인구 1,000명당', 'purple'),
     ]), unsafe_allow_html=True)
 
+    # CCTV 총 설치 대수
     st.markdown('<div class="panel-card"><div class="panel-title">📹 자치구별 CCTV 총 설치 대수</div></div>', unsafe_allow_html=True)
     fig5 = px.bar(
         cctv.sort_values('총계', ascending=False), x='자치구', y='총계',
@@ -781,6 +845,7 @@ elif menu == "📹 CCTV 현황":
     fig5.update_layout(xaxis_tickangle=-45, coloraxis_showscale=False)
     st.plotly_chart(fig5, use_container_width=True)
 
+    # 연도별 CCTV 추이
     st.markdown('<div class="panel-card"><div class="panel-title">📈 연도별 CCTV 설치 추이 (상위 5개 구)</div></div>', unsafe_allow_html=True)
     y_cols = ['자치구','2017년','2018년','2019년','2020년','2021년','2022년','2023년','2024년','2025년']
     top5c = cctv.nlargest(5, '총계')['자치구'].tolist()
@@ -790,6 +855,7 @@ elif menu == "📹 CCTV 현황":
     plotly_dark_layout(fig6, height=400)
     st.plotly_chart(fig6, use_container_width=True)
 
+    # 인구 천명당 CCTV
     st.markdown('<div class="panel-card"><div class="panel-title">👥 인구 1,000명당 CCTV 설치 비율</div></div>', unsafe_allow_html=True)
     fig7 = px.bar(
         mg.sort_values('인구천명당_CCTV', ascending=False),
@@ -801,6 +867,7 @@ elif menu == "📹 CCTV 현황":
     fig7.update_layout(xaxis_tickangle=-45, coloraxis_showscale=False)
     st.plotly_chart(fig7, use_container_width=True)
 
+    # CCTV 설치 현황 지도
     st.markdown('<div class="panel-card"><div class="panel-title">🗺️ CCTV 설치 현황 지도</div></div>', unsafe_allow_html=True)
     m_cctv = folium.Map(location=[37.5665, 126.9780], zoom_start=11, tiles='CartoDB dark_matter')
     folium.Choropleth(
@@ -822,6 +889,7 @@ elif menu == "📹 CCTV 현황":
 
     st_folium(m_cctv, width=None, height=500, returned_objects=[])
 
+    # 면적당 CCTV 밀도 (area_seoul.csv 활용)
     if not area.empty:
         st.markdown('<div class="panel-card"><div class="panel-title">📐 면적(km²)당 CCTV 설치 밀도</div></div>', unsafe_allow_html=True)
         area_cctv = pd.merge(
@@ -840,6 +908,7 @@ elif menu == "📹 CCTV 현황":
         fig_area_cctv.update_layout(xaxis_tickangle=-45, coloraxis_showscale=False)
         st.plotly_chart(fig_area_cctv, use_container_width=True)
 
+        # 면적당 범죄 밀도
         if col_o in occur.columns:
             st.markdown('<div class="panel-card"><div class="panel-title">🚨 면적(km²)당 범죄 발생 밀도</div></div>', unsafe_allow_html=True)
             area_crime = pd.merge(
@@ -870,6 +939,7 @@ elif menu == "📈 통계 비교":
     selected = st.multiselect("비교할 자치구 선택 (최대 5개)", gu_list, default=gu_list[:3], max_selections=5)
 
     if selected:
+        # 비교 테이블
         compare = crime[crime['자치구별'].isin(selected)][['자치구별', col_r, col_a]].copy()
         occ_sel = occur[occur['자치구별'].isin(selected)][['자치구별', col_o]]
         compare = pd.merge(compare, occ_sel, on='자치구별', how='left')
@@ -882,6 +952,7 @@ elif menu == "📈 통계 비교":
 
         st.dataframe(compare, use_container_width=True, hide_index=True)
 
+        # 비교 차트
         col1, col2 = st.columns(2)
         with col1:
             fig_r = px.bar(compare, x='자치구', y='범죄율(%)', color='자치구', title='범죄율 비교')
@@ -894,6 +965,7 @@ elif menu == "📈 통계 비교":
             fig_c.update_layout(showlegend=False)
             st.plotly_chart(fig_c, use_container_width=True)
 
+        # 산점도: CCTV vs 범죄율
         st.markdown('<div class="panel-card"><div class="panel-title">🔗 CCTV 대수 vs 범죄율 관계</div></div>', unsafe_allow_html=True)
         all_compare = crime[['자치구별', col_r]].copy()
         all_cctv = cctv[['자치구','총계']].rename(columns={'자치구':'자치구별'})
@@ -911,6 +983,7 @@ elif menu == "📈 통계 비교":
         plotly_dark_layout(fig_s, height=500)
         fig_s.update_layout(showlegend=False)
 
+        # 추세선
         from numpy.polynomial.polynomial import polyfit
         x_vals = scatter['CCTV대수'].values
         y_vals = scatter['범죄율'].values
@@ -929,7 +1002,7 @@ elif menu == "📈 통계 비교":
 
 
 # ============================================================
-# 페이지 5: CCTV 예측 시뮬레이터
+# 페이지 5: CCTV 예측 시뮬레이터 (NEW!)
 # ============================================================
 elif menu == "🔮 CCTV 예측 시뮬레이터":
 
@@ -950,6 +1023,7 @@ elif menu == "🔮 CCTV 예측 시뮬레이터":
         sel_gu = st.selectbox("🏢 자치구 선택", gu_list, index=0)
         add_cctv = st.slider("📹 CCTV 추가 설치 대수", min_value=100, max_value=3000, value=500, step=100)
 
+        # 현재 데이터
         gu_crime_rate = crime.loc[crime['자치구별']==sel_gu, col_r].values
         gu_crime_rate = float(gu_crime_rate[0]) if len(gu_crime_rate) > 0 else 0
         gu_arrest_rate = crime.loc[crime['자치구별']==sel_gu, col_a].values
@@ -979,10 +1053,12 @@ elif menu == "🔮 CCTV 예측 시뮬레이터":
         ''', unsafe_allow_html=True)
 
     with sim_col2:
+        # 예측 계산
         new_total = gu_cctv + add_cctv
         new_per1k = new_total / gu_pop * 1000
         delta_per1k = new_per1k - current_per1k
 
+        # 선형 모델: CCTV per 1k 증가 → 범죄율 감소 (데이터 상관관계 기반)
         crime_reduction = min(delta_per1k * 0.03, gu_crime_rate * 0.5)
         new_crime_rate = max(0.1, gu_crime_rate - crime_reduction)
         reduction_pct = (crime_reduction / gu_crime_rate * 100) if gu_crime_rate > 0 else 0
@@ -1021,13 +1097,16 @@ elif menu == "🔮 CCTV 예측 시뮬레이터":
                 </div>
             </div>
             <div class="sim-note">
-                ※ 본 예측은 CCTV 설치 밀도와 범죄율 간의 선형 회귀 추정입니다.<br>
+                ※ 본 예측은 CCTV 설치 밀도와 범죄율 간의 <b>선형 회귀 추정</b>입니다.<br>
                 실제 결과는 지역 특성, 경찰 배치, 인구 밀도 등 다양한 요인에 의해 달라질 수 있습니다.<br>
                 <span style="color:#22d3ee;">🔬 한윤수 팀원의 ML 모델(XGBoost/Random Forest) 연동 시 더 정확한 예측이 가능합니다.</span>
             </div>
         </div>
         ''', unsafe_allow_html=True)
 
+    # ============================================================
+    # 황준연 ML 모델 결과 연동
+    # ============================================================
     st.markdown('<hr class="divider">', unsafe_allow_html=True)
     st.markdown('''
     <div class="panel-card">
@@ -1039,6 +1118,7 @@ elif menu == "🔮 CCTV 예측 시뮬레이터":
     </div>
     ''', unsafe_allow_html=True)
 
+    # 모델 결과 CSV 로딩
     try:
         model_df = pd.read_csv('cctv_model_result_revised.csv', encoding='utf-8-sig')
         model_loaded = True
@@ -1047,6 +1127,7 @@ elif menu == "🔮 CCTV 예측 시뮬레이터":
         model_loaded = False
 
     if model_loaded:
+        # 모델 성능 비교 차트
         st.markdown('<div class="panel-card"><div class="panel-title">📊 모델별 정확도 비교</div></div>', unsafe_allow_html=True)
         model_perf = pd.DataFrame({
             '모델': ['Decision Tree', 'Random Forest', 'SVM', 'KNN'],
@@ -1064,6 +1145,7 @@ elif menu == "🔮 CCTV 예측 시뮬레이터":
         fig_perf.update_layout(coloraxis_showscale=False, yaxis=dict(range=[0, 1]))
         st.plotly_chart(fig_perf, use_container_width=True)
 
+        # CCTV 추가 설치 우선순위 표
         st.markdown('<div class="panel-card"><div class="panel-title">🎯 CCTV 추가 설치 우선순위 (ML 모델 결과)</div></div>', unsafe_allow_html=True)
         priority_df = model_df.sort_values('추가설치우선순위점수', ascending=False)
 
@@ -1079,17 +1161,19 @@ elif menu == "🔮 CCTV 예측 시뮬레이터":
         fig_priority.update_layout(xaxis_tickangle=-45)
         st.plotly_chart(fig_priority, use_container_width=True)
 
+        # 분석 인사이트
         st.markdown('''
         <div class="panel-card">
             <div class="panel-title">💡 주요 분석 결과</div>
             <div style="font-size:13px;color:#cbd5e1;line-height:2;">
-                • <span style="color:#ef4444;">중구</span>는 인구 1만 명당 범죄 수가 가장 높지만, 인구 1만 명당 CCTV 수 역시 매우 높아 CCTV 밀도 부족도가 낮게 반영되어 최상위 우선순위에서 제외됨<br>
-                • <span style="color:#ef4444;">송파구</span>는 범죄율이 평균 이상이면서 CCTV 밀도가 상대적으로 낮고, CCTV 1대당 범죄 부담이 높아 추가 설치 우선순위가 가장 높게 산출됨<br>
-                • 최종 선택 모델: <span style="color:#22d3ee;">Decision Tree / Random Forest</span> (정확도 85.7%)
+                • <b style="color:#ef4444;">중구</b>는 인구 1만 명당 범죄 수가 가장 높지만, 인구 1만 명당 CCTV 수 역시 매우 높아 CCTV 밀도 부족도가 낮게 반영되어 최상위 우선순위에서 제외됨<br>
+                • <b style="color:#ef4444;">송파구</b>는 범죄율이 평균 이상이면서 CCTV 밀도가 상대적으로 낮고, CCTV 1대당 범죄 부담이 높아 추가 설치 우선순위가 가장 높게 산출됨<br>
+                • 최종 선택 모델: <b style="color:#22d3ee;">Decision Tree / Random Forest</b> (정확도 85.7%)
             </div>
         </div>
         ''', unsafe_allow_html=True)
 
+        # CCTV 밀도와 범죄율 산점도
         if '인구1만명당범죄수' in model_df.columns and '인구1만명당CCTV수' in model_df.columns:
             st.markdown('<div class="panel-card"><div class="panel-title">🔗 CCTV 밀도 vs 범죄율 관계 (ML 분석)</div></div>', unsafe_allow_html=True)
 
@@ -1102,6 +1186,7 @@ elif menu == "🔮 CCTV 예측 시뮬레이터":
             )
             fig_scatter.update_traces(textposition='top center', textfont=dict(size=10, color='#94a3b8'))
 
+            # 평균선
             avg_crime = model_df['인구1만명당범죄수'].mean()
             avg_cctv = model_df['인구1만명당CCTV수'].mean()
             fig_scatter.add_hline(y=avg_crime, line_dash='dash', line_color='rgba(255,255,255,0.3)', annotation_text='범죄율 평균')
@@ -1110,6 +1195,7 @@ elif menu == "🔮 CCTV 예측 시뮬레이터":
             plotly_dark_layout(fig_scatter, height=550)
             st.plotly_chart(fig_scatter, use_container_width=True)
 
+        # CCTV 추가 설치 필요도 지도
         st.markdown('<div class="panel-card"><div class="panel-title">🗺️ CCTV 추가 설치 필요도 지도 (ML 모델 결과)</div></div>', unsafe_allow_html=True)
         m_need = folium.Map(location=[37.5665, 126.9780], zoom_start=11, tiles='CartoDB dark_matter')
 
@@ -1140,7 +1226,8 @@ elif menu == "🔮 CCTV 예측 시뮬레이터":
 
         st_folium(m_need, width=None, height=500, returned_objects=[])
 
-        st.markdown("📋 전체 자치구 CCTV 추가 설치 우선순위 상세")
+        # 전체 자치구 상세 테이블
+        st.markdown("**📋 전체 자치구 CCTV 추가 설치 우선순위 상세**")
         display_cols = ['자치구', '총범죄수', 'CCTV수', '인구수', '면적',
                        '인구1만명당범죄수', '인구1만명당CCTV수', 'CCTV1대당범죄수',
                        '추가설치우선순위점수', '추가설치필요도', '예측_추가설치필요도']
@@ -1149,6 +1236,9 @@ elif menu == "🔮 CCTV 예측 시뮬레이터":
         display_df.index = display_df.index + 1
         st.dataframe(display_df, use_container_width=True)
 
+    # ============================================================
+    # 한윤수 XGBoost 모델 결과 연동
+    # ============================================================
     st.markdown('<hr class="divider">', unsafe_allow_html=True)
     st.markdown('''
     <div class="panel-card">
@@ -1161,6 +1251,7 @@ elif menu == "🔮 CCTV 예측 시뮬레이터":
 
     try:
         xgb_df = pd.read_csv('Seoul_Crime_Model_Data.csv', encoding='utf-8-sig')
+        # 서울 25개 자치구만 필터링
         seoul_gu_list = list(gu_coords.keys())
         xgb_seoul = xgb_df[xgb_df['자치구'].isin(seoul_gu_list)].copy()
         xgb_loaded = True
@@ -1171,6 +1262,7 @@ elif menu == "🔮 CCTV 예측 시뮬레이터":
     if xgb_loaded and len(xgb_seoul) > 0:
         xgb_seoul = xgb_seoul.sort_values('예측_위험도_점수', ascending=False)
 
+        # KPI 카드
         max_risk_gu = xgb_seoul.iloc[0]['자치구']
         max_risk_score = xgb_seoul.iloc[0]['예측_위험도_점수']
         max_priority_gu = xgb_seoul.sort_values('CCTV_설치_우선순위_점수', ascending=False).iloc[0]['자치구']
@@ -1184,6 +1276,7 @@ elif menu == "🔮 CCTV 예측 시뮬레이터":
             ('🤖 모델', 'XGBoost', '다변량 환경 요인 반영', 'purple'),
         ]), unsafe_allow_html=True)
 
+        # 예측 위험도 점수 차트
         st.markdown('<div class="panel-card"><div class="panel-title">🔴 자치구별 예측 위험도 점수 (XGBoost)</div></div>', unsafe_allow_html=True)
         fig_risk = px.bar(
             xgb_seoul, x='자치구', y='예측_위험도_점수',
@@ -1196,6 +1289,7 @@ elif menu == "🔮 CCTV 예측 시뮬레이터":
         fig_risk.update_layout(xaxis_tickangle=-45, coloraxis_showscale=False)
         st.plotly_chart(fig_risk, use_container_width=True)
 
+        # CCTV 설치 우선순위 점수 차트
         xgb_priority = xgb_seoul.sort_values('CCTV_설치_우선순위_점수', ascending=False)
         st.markdown('<div class="panel-card"><div class="panel-title">🎯 자치구별 CCTV 설치 우선순위 점수 (XGBoost)</div></div>', unsafe_allow_html=True)
         fig_xgb_pri = px.bar(
@@ -1209,6 +1303,7 @@ elif menu == "🔮 CCTV 예측 시뮬레이터":
         fig_xgb_pri.update_layout(xaxis_tickangle=-45, coloraxis_showscale=False)
         st.plotly_chart(fig_xgb_pri, use_container_width=True)
 
+        # 위험도 vs 우선순위 산점도
         st.markdown('<div class="panel-card"><div class="panel-title">🔗 위험도 점수 vs CCTV 설치 우선순위 (XGBoost)</div></div>', unsafe_allow_html=True)
         fig_xgb_scatter = px.scatter(
             xgb_seoul, x='예측_위험도_점수', y='CCTV_설치_우선순위_점수',
@@ -1221,6 +1316,7 @@ elif menu == "🔮 CCTV 예측 시뮬레이터":
         fig_xgb_scatter.update_layout(coloraxis_showscale=False)
         st.plotly_chart(fig_xgb_scatter, use_container_width=True)
 
+        # XGBoost 위험도 지도
         st.markdown('<div class="panel-card"><div class="panel-title">🗺️ XGBoost 예측 위험도 지도</div></div>', unsafe_allow_html=True)
         m_xgb = folium.Map(location=[37.5665, 126.9780], zoom_start=11, tiles='CartoDB dark_matter')
 
@@ -1251,7 +1347,8 @@ elif menu == "🔮 CCTV 예측 시뮬레이터":
 
         st_folium(m_xgb, width=None, height=500, returned_objects=[])
 
-        st.markdown("📋 XGBoost 모델 전체 분석 결과 (서울 25개 자치구)")
+        # 상세 데이터 테이블
+        st.markdown("**📋 XGBoost 모델 전체 분석 결과 (서울 25개 자치구)**")
         xgb_display = xgb_seoul[['자치구', '야간_유동인구', 'CCTV_대수', '발생_10만명당',
                                   '예측_위험도_점수', 'CCTV_설치_우선순위_점수', '조도_지수']].reset_index(drop=True)
         xgb_display.index = xgb_display.index + 1
@@ -1263,6 +1360,7 @@ elif menu == "🔮 CCTV 예측 시뮬레이터":
 elif menu == "🔍 범죄 유형별 분석":
     st.markdown('<div class="page-header"><span class="page-icon">🔍</span>5대 범죄 유형별 분석 (2024년)</div>', unsafe_allow_html=True)
 
+    # crime_seoul.csv에서 유형별 데이터 파싱
     try:
         crime_type_raw = pd.read_csv('crime_seoul.csv', encoding='utf-8-sig')
         crime_type_data = crime_type_raw.iloc[3:].copy()
@@ -1288,6 +1386,7 @@ elif menu == "🔍 범죄 유형별 분석":
         crime_type_loaded = False
 
     if crime_type_loaded:
+        # 서울시 전체 요약 KPI
         total_row = crime_type_df.sum(numeric_only=True)
         st.markdown(make_kpi_html([
             ('🔪 살인', f"{int(total_row['살인_발생'])}건", f"검거 {int(total_row['살인_검거'])}건", 'red'),
@@ -1296,6 +1395,7 @@ elif menu == "🔍 범죄 유형별 분석":
             ('🛍️ 절도', f"{int(total_row['절도_발생'])}건", f"검거 {int(total_row['절도_검거'])}건", 'cyan'),
         ]), unsafe_allow_html=True)
 
+        # 유형 선택
         crime_types = ['살인', '강도', '강간강제추행', '절도', '폭력']
         selected_type = st.selectbox("📌 분석할 범죄 유형 선택", crime_types)
 
@@ -1304,6 +1404,7 @@ elif menu == "🔍 범죄 유형별 분석":
 
         sorted_df = crime_type_df.sort_values(col_occur, ascending=False)
 
+        # 발생 건수 바차트
         st.markdown(f'<div class="panel-card"><div class="panel-title">📊 자치구별 {selected_type} 발생 건수</div></div>', unsafe_allow_html=True)
         fig_type = px.bar(
             sorted_df, x='자치구', y=col_occur,
@@ -1316,6 +1417,7 @@ elif menu == "🔍 범죄 유형별 분석":
         fig_type.update_layout(xaxis_tickangle=-45, coloraxis_showscale=False)
         st.plotly_chart(fig_type, use_container_width=True)
 
+        # 발생 vs 검거 비교
         st.markdown(f'<div class="panel-card"><div class="panel-title">⚖️ {selected_type} 발생 vs 검거 비교</div></div>', unsafe_allow_html=True)
         fig_compare = go.Figure()
         fig_compare.add_trace(go.Bar(name='발생', x=sorted_df['자치구'], y=sorted_df[col_occur], marker_color='#ef4444'))
@@ -1325,6 +1427,7 @@ elif menu == "🔍 범죄 유형별 분석":
         fig_compare.update_layout(xaxis_tickangle=-45)
         st.plotly_chart(fig_compare, use_container_width=True)
 
+        # 검거율 차트
         st.markdown(f'<div class="panel-card"><div class="panel-title">🎯 자치구별 {selected_type} 검거율</div></div>', unsafe_allow_html=True)
         arrest_df = sorted_df.copy()
         arrest_df['검거율'] = (arrest_df[col_arrest] / arrest_df[col_occur].replace(0, 1) * 100).round(1)
@@ -1341,6 +1444,7 @@ elif menu == "🔍 범죄 유형별 분석":
         fig_arrest.update_layout(yaxis=dict(autorange='reversed'), coloraxis_showscale=False)
         st.plotly_chart(fig_arrest, use_container_width=True)
 
+        # 5대 범죄 유형 구성 비율 (전체)
         st.markdown('<div class="panel-card"><div class="panel-title">🥧 서울시 5대 범죄 유형 구성 비율</div></div>', unsafe_allow_html=True)
         pie_data = pd.DataFrame({
             '유형': ['살인', '강도', '강간·강제추행', '절도', '폭력'],
@@ -1352,6 +1456,7 @@ elif menu == "🔍 범죄 유형별 분석":
         plotly_dark_layout(fig_pie, height=400)
         st.plotly_chart(fig_pie, use_container_width=True)
 
+        # 자치구별 유형별 히트맵
         st.markdown('<div class="panel-card"><div class="panel-title">🔥 자치구별 5대 범죄 발생 히트맵</div></div>', unsafe_allow_html=True)
         heatmap_df = crime_type_df.set_index('자치구')[['살인_발생', '강도_발생', '강간강제추행_발생', '절도_발생', '폭력_발생']]
         heatmap_df.columns = ['살인', '강도', '강간·강제추행', '절도', '폭력']
@@ -1367,12 +1472,161 @@ elif menu == "🔍 범죄 유형별 분석":
         plotly_dark_layout(fig_heat, height=700)
         st.plotly_chart(fig_heat, use_container_width=True)
 
-        st.markdown("📋 전체 자치구 5대 범죄 유형별 상세 데이터")
+        # 상세 테이블
+        st.markdown("**📋 전체 자치구 5대 범죄 유형별 상세 데이터**")
         table_df = crime_type_df[['자치구', '살인_발생', '강도_발생', '강간강제추행_발생', '절도_발생', '폭력_발생', '총범죄_발생']].sort_values('총범죄_발생', ascending=False).reset_index(drop=True)
         table_df.index = table_df.index + 1
         st.dataframe(table_df, use_container_width=True)
 
-# * 수정: 5개년 데이터가 없으므로 기존의 '페이지 7: 범죄 추이 예측' 코드를 전체 삭제했습니다.
+# ============================================================
+# 페이지 7: 범죄 추이 예측
+# ============================================================
+elif menu == "📉 범죄 추이 예측":
+    st.markdown('<div class="page-header"><span class="page-icon">📉</span>범죄 추이 예측 — 연도별 트렌드 & 미래 전망</div>', unsafe_allow_html=True)
+
+    # 5개년 데이터 로딩
+    try:
+        for enc in ['cp949', 'euc-kr', 'utf-8', 'utf-8-sig']:
+            try:
+                trend_raw = pd.read_csv('자치구별 범죄율 검거율 5개년.csv', encoding=enc)
+                break
+            except:
+                continue
+
+        # 범죄율 파싱
+        years_5 = [2019, 2020, 2021, 2022, 2023]
+        trend_list = []
+        for _, row in trend_raw.iloc[1:].iterrows():
+            gu = str(row.iloc[0]).strip()
+            if not gu or gu == 'nan':
+                continue
+            for i, yr in enumerate(years_5):
+                cr_val = pd.to_numeric(str(row.iloc[1 + i * 2]).replace(',', ''), errors='coerce')
+                ar_val = pd.to_numeric(str(row.iloc[2 + i * 2]).replace(',', ''), errors='coerce')
+                trend_list.append({'자치구': gu, '연도': yr, '범죄율': cr_val, '검거율': ar_val})
+
+        # 2024년 데이터 추가 (crime에서)
+        if col_r in crime.columns and col_a in crime.columns:
+            for _, row in crime.iterrows():
+                gu = row['자치구별']
+                cr = row[col_r] if col_r in crime.columns else None
+                ar = row[col_a] if col_a in crime.columns else None
+                if pd.notna(cr):
+                    trend_list.append({'자치구': gu, '연도': 2024, '범죄율': cr, '검거율': ar})
+
+        trend_df = pd.DataFrame(trend_list).dropna(subset=['범죄율'])
+        trend_loaded = True
+    except Exception as e:
+        st.warning(f"추이 데이터 로딩 실패: {e}")
+        trend_loaded = False
+
+    if trend_loaded:
+        available_years = sorted(trend_df['연도'].unique())
+        all_gus = sorted(trend_df['자치구'].unique())
+
+        # 자치구 선택
+        selected_gus = st.multiselect("📍 분석할 자치구 선택 (최대 5개)", all_gus, default=['강남구', '송파구', '중구'], max_selections=5)
+
+        if selected_gus:
+            filtered = trend_df[trend_df['자치구'].isin(selected_gus)]
+
+            # 범죄율 추이 차트
+            st.markdown('<div class="panel-card"><div class="panel-title">📈 자치구별 범죄율 연도별 추이</div></div>', unsafe_allow_html=True)
+            fig_trend = px.line(
+                filtered, x='연도', y='범죄율', color='자치구',
+                markers=True, labels={'범죄율': '범죄율 (%)', '연도': '연도'}
+            )
+            plotly_dark_layout(fig_trend, height=450)
+            fig_trend.update_layout(xaxis=dict(dtick=1))
+            st.plotly_chart(fig_trend, use_container_width=True)
+
+            # 미래 예측 (선형 회귀)
+            st.markdown('<div class="panel-card"><div class="panel-title">🔮 범죄율 추세 예측 (2025~2026년)</div></div>', unsafe_allow_html=True)
+
+            fig_pred = go.Figure()
+            pred_years = [2025, 2026]
+
+            for gu in selected_gus:
+                gu_data = filtered[filtered['자치구'] == gu].sort_values('연도')
+                x = gu_data['연도'].values
+                y = gu_data['범죄율'].values
+
+                if len(x) >= 2:
+                    # 선형 회귀
+                    coeffs = np.polyfit(x, y, 1)
+                    poly = np.poly1d(coeffs)
+
+                    # 실제 데이터
+                    fig_pred.add_trace(go.Scatter(
+                        x=x, y=y, mode='lines+markers', name=f'{gu} (실측)',
+                        line=dict(width=2)
+                    ))
+
+                    # 예측
+                    all_x = list(x) + pred_years
+                    pred_y = [poly(yr) for yr in pred_years]
+                    fig_pred.add_trace(go.Scatter(
+                        x=pred_years, y=[max(0, p) for p in pred_y],
+                        mode='lines+markers', name=f'{gu} (예측)',
+                        line=dict(dash='dash', width=2),
+                        marker=dict(symbol='diamond', size=10)
+                    ))
+
+            plotly_dark_layout(fig_pred, height=500)
+            fig_pred.update_layout(xaxis=dict(dtick=1, title='연도'), yaxis_title='범죄율 (%)')
+            st.plotly_chart(fig_pred, use_container_width=True)
+
+            # 예측 결과 테이블
+            st.markdown('<div class="panel-card"><div class="panel-title">📋 2025~2026 범죄율 예측 결과</div></div>', unsafe_allow_html=True)
+            pred_table = []
+            for gu in selected_gus:
+                gu_data = filtered[filtered['자치구'] == gu].sort_values('연도')
+                x = gu_data['연도'].values
+                y = gu_data['범죄율'].values
+                if len(x) >= 2:
+                    coeffs = np.polyfit(x, y, 1)
+                    poly = np.poly1d(coeffs)
+                    cr_2024 = gu_data[gu_data['연도'] == gu_data['연도'].max()]['범죄율'].values[0]
+                    cr_2025 = max(0, poly(2025))
+                    cr_2026 = max(0, poly(2026))
+                    change = cr_2026 - cr_2024
+                    pred_table.append({
+                        '자치구': gu,
+                        f'{int(gu_data["연도"].max())}년 범죄율': f'{cr_2024:.2f}%',
+                        '2025년 예측': f'{cr_2025:.2f}%',
+                        '2026년 예측': f'{cr_2026:.2f}%',
+                        '변화 추세': '📈 증가' if change > 0.05 else '📉 감소' if change < -0.05 else '➡️ 유지'
+                    })
+            pred_result = pd.DataFrame(pred_table)
+            pred_result.index = pred_result.index + 1
+            st.dataframe(pred_result, use_container_width=True)
+
+            # 검거율 추이
+            if '검거율' in filtered.columns:
+                st.markdown('<div class="panel-card"><div class="panel-title">🎯 자치구별 검거율 연도별 추이</div></div>', unsafe_allow_html=True)
+                fig_arrest_trend = px.line(
+                    filtered, x='연도', y='검거율', color='자치구',
+                    markers=True, labels={'검거율': '검거율 (%)', '연도': '연도'}
+                )
+                plotly_dark_layout(fig_arrest_trend, height=400)
+                fig_arrest_trend.update_layout(xaxis=dict(dtick=1))
+                st.plotly_chart(fig_arrest_trend, use_container_width=True)
+
+            # 서울 전체 평균 추이
+            st.markdown('<div class="panel-card"><div class="panel-title">🏙️ 서울시 전체 평균 범죄율 추이</div></div>', unsafe_allow_html=True)
+            avg_trend = trend_df.groupby('연도').agg({'범죄율': 'mean', '검거율': 'mean'}).reset_index()
+            fig_avg = go.Figure()
+            fig_avg.add_trace(go.Scatter(x=avg_trend['연도'], y=avg_trend['범죄율'], mode='lines+markers', name='평균 범죄율', line=dict(color='#ef4444', width=3)))
+            fig_avg.add_trace(go.Scatter(x=avg_trend['연도'], y=avg_trend['검거율'], mode='lines+markers', name='평균 검거율', line=dict(color='#22d3ee', width=3), yaxis='y2'))
+            plotly_dark_layout(fig_avg, height=400)
+            fig_avg.update_layout(
+                xaxis=dict(dtick=1, title='연도'),
+                yaxis=dict(title='범죄율 (%)'),
+                yaxis2=dict(title='검거율 (%)', overlaying='y', side='right')
+            )
+            st.plotly_chart(fig_avg, use_container_width=True)
+        else:
+            st.info("분석할 자치구를 선택하세요.")
 
 # ============================================================
 # 페이지 8: AI 심층 분석 (한윤수 XGBoost + Gemini 질의응답)
@@ -1380,6 +1634,7 @@ elif menu == "🔍 범죄 유형별 분석":
 elif menu == "🧠 AI 심층 분석":
     st.markdown('<div class="page-header"><span class="page-icon">🧠</span>AI 심층 분석 — 자치구별 환경 요인 분석 & 정책 시뮬레이션</div>', unsafe_allow_html=True)
 
+    # AI 엔진 로딩
     @st.cache_resource
     def load_ai_engine():
         data_path = 'Seoul_Crime_Model_Data.csv'
@@ -1403,10 +1658,12 @@ elif menu == "🧠 AI 심층 분석":
     ai_df, ai_scaler, ai_model, ai_features = load_ai_engine()
 
     if not ai_df.empty and ai_scaler is not None:
+        # 자치구 선택
         seoul_gu_list_ai = sorted([g for g in gu_coords.keys() if g in ai_df['자치구'].values])
         selected_gu = st.selectbox("🔍 분석할 자치구를 선택하세요", seoul_gu_list_ai)
         gu_data = ai_df[ai_df['자치구'] == selected_gu].iloc[0]
 
+        # 분석 모드 선택
         ai_mode = st.radio("분석 모드", ["🧠 환경 요인 분석", "🎯 CCTV 설치 우선순위", "📊 심층 진단 리포트", "🔮 미래 정책 시뮬레이션"], horizontal=True)
 
         if ai_mode == "🧠 환경 요인 분석":
@@ -1416,11 +1673,11 @@ elif menu == "🧠 AI 심층 분석":
                 st.metric("10만명당 범죄 발생 수", f"{gu_data['발생_10만명당']:.1f}건")
                 st.markdown(f'''
                 <div class="panel-card" style="border-left: 3px solid #22d3ee;">
-                    <span style="color:white;">📍 {selected_gu} 주요 지표 현황:</span><br><br>
-                    • 야간 유동인구: {int(gu_data['야간_유동인구']):,}명<br>
-                    • 노후주택 비율: {gu_data['노후주택_비율']:.1f}%<br>
-                    • CCTV 대수: {int(gu_data['CCTV_대수'])}대<br>
-                    • 조도 지수: {gu_data['조도_지수']:.1f}점
+                    <b>📍 {selected_gu} 주요 지표 현황:</b><br><br>
+                    • 야간 유동인구: <b>{int(gu_data['야간_유동인구']):,}</b>명<br>
+                    • 노후주택 비율: <b>{gu_data['노후주택_비율']:.1f}</b>%<br>
+                    • CCTV 대수: <b>{int(gu_data['CCTV_대수'])}</b>대<br>
+                    • 조도 지수: <b>{gu_data['조도_지수']:.1f}</b>점
                 </div>
                 ''', unsafe_allow_html=True)
             with col2:
@@ -1442,7 +1699,7 @@ elif menu == "🧠 AI 심층 분석":
 
             c1, c2, c3 = st.columns(3)
             with c1: st.error(f"### 🚨 긴급 설치 1순위\n{priority_ai.iloc[0]['자치구']}")
-            with c2: st.info(f"### 📍 현재 선택 지역\n{selected_gu} (전체 {len(priority_ai)}개 중 {gu_rank}위)")
+            with c2: st.info(f"### 📍 현재 선택 지역\n**{selected_gu}** (전체 {len(priority_ai)}개 중 **{gu_rank}위**)")
             with c3: st.success(f"### ✅ 유지/관리 구역\n{priority_ai.iloc[-1]['자치구']}")
 
             colors = ['#ef4444' if gu == selected_gu else '#a29bfe' for gu in priority_ai['자치구']]
@@ -1476,11 +1733,11 @@ elif menu == "🧠 AI 심층 분석":
             with col2:
                 st.markdown(f'''
                 <div class="panel-card" style="border-left: 3px solid #f97316;">
-                    <span style="color:white;">[{selected_gu} AI 진단 리포트]</span><br><br>
-                    <span style="color:white;">🔍 CPTED 분석 결과:</span><br>
-                    {selected_gu}의 사각지대 취약 지수는 {gu_data['사각지대_취약_지수']:.2f}이며,
-                    자연감시 시너지 지수는 {gu_data['자연감시_시너지_지수']:.1f}입니다.<br><br>
-                    <span style="color:white;">📍 AI 권장 액션 플랜:</span><br>
+                    <b>[{selected_gu} AI 진단 리포트]</b><br><br>
+                    <b>🔍 CPTED 분석 결과:</b><br>
+                    {selected_gu}의 사각지대 취약 지수는 <b>{gu_data['사각지대_취약_지수']:.2f}</b>이며,
+                    자연감시 시너지 지수는 <b>{gu_data['자연감시_시너지_지수']:.1f}</b>입니다.<br><br>
+                    <b>📍 AI 권장 액션 플랜:</b><br>
                     1. 야간 유동인구가 몰리는 22시~04시 시간대 집중 순찰<br>
                     2. 노후주택 밀집 구역 중심의 스마트 보안등 및 CCTV 우선 확충
                 </div>
@@ -1536,6 +1793,7 @@ elif menu == "🧠 AI 심층 분석":
             else:
                 st.info("👈 좌측 사이드바에서 정책 파라미터를 조절하고 '시뮬레이션 실행' 버튼을 눌러주세요.")
 
+        # AI 치안 정책 보좌관 (질의응답) — 모든 모드에서 표시
         st.markdown('<hr class="divider">', unsafe_allow_html=True)
         st.markdown('<div class="panel-card"><div class="panel-title">💬 AI 치안 정책 보좌관 (질의응답)</div><div style="font-size:13px;color:#94a3b8;">현재 보고 계신 자치구의 데이터나 치안 관련 궁금한 점을 질문해보세요.</div></div>', unsafe_allow_html=True)
 
