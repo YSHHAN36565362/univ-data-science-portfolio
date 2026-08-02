@@ -79,19 +79,29 @@ KoBERTはWikipediaやニュースなどから収集した数百万の韓国語�
 ## 8. フォルダ構成
 
 ```
+kobert-paper-classifier/
 ├── README.md
-├── main_kobert/                     # 最終採用モデル（KoBERT, 384 & 512）
-│   ├── train_384.py
-│   ├── train_512.py
-│   ├── ensemble.py
-│   └── results/
-│       ├── metrics_summary.csv
-│       ├── classification_report.csv
-│       └── confusion_matrix.png
-└── experiments/
-    └── model_selection/              # モデル選定の比較実験
-        ├── train_korscibert.py       # ライセンス・互換性問題により未完了
-        └── train_klue_bert.py        # ベースライン比較用
+└── main_kobert/ # 最終採用モデル（KoBERT, 384 & 512）
+├── final_ver.ipynb # 学習コード原本（Colabノートブック）
+├── train_384.py # 384トークン学習スクリプト
+├── train_512.py # 512トークン学習スクリプト
+├── ensemble.py # 384+512 soft-vote アンサンブル
+├── best_model/ # 学習済みトークナイザー・設定ファイル
+│ ├── config.json
+│ ├── tokenizer.json
+│ ├── tokenizer_config.json
+│ ├── special_tokens_map.json
+│ └── label2id.json
+└── results/ # 学習結果・評価指標
+├── classification_report.csv
+├── metrics_summary.csv
+├── preds_epoch1.csv
+├── preds_epoch2.csv
+├── preds_epoch3.csv
+├── preds_epoch4.csv
+├── preds_epoch5.csv
+├── preds_epoch6.csv
+└── preds_epoch8.csv
 ```
 
 ## 9. 実行方法
@@ -186,20 +196,29 @@ KoBERT는 SKT Brain이 개발한 한국어 전용 BERT 모델입니다. 구글 B
 ## 8. 폴더 구조
 
 ```
+kobert-paper-classifier/
 ├── README.md
-├── main_kobert/                     # 최종 채택 모델 (KoBERT, 384 & 512)
-│   ├── train_384.py
-│   ├── train_512.py
-│   ├── ensemble.py
-│   └── results/
-│       ├── metrics_summary.csv
-│       ├── classification_report.csv
-│       └── confusion_matrix.png
-└── experiments/
-    └── model_selection/              # 모델 선정 비교실험
-        ├── train_korscibert.py       # 라이선스/호환성 문제로 미완료
-        └── train_klue_bert.py        # 베이스라인 비교용
-```
+└── main_kobert/ # 최종 채택 모델 (KoBERT, 384 & 512)
+├── final_ver.ipynb # 학습 코드 원본 (Colab 노트북)
+├── train_384.py # 384 토큰 학습 스크립트
+├── train_512.py # 512 토큰 학습 스크립트
+├── ensemble.py # 384+512 soft-vote 앙상블
+├── best_model/ # 학습된 토크나이저·설정 파일
+│ ├── config.json
+│ ├── tokenizer.json
+│ ├── tokenizer_config.json
+│ ├── special_tokens_map.json
+│ └── label2id.json
+└── results/ # 학습 결과·평가 지표
+├── classification_report.csv
+├── metrics_summary.csv
+├── preds_epoch1.csv
+├── preds_epoch2.csv
+├── preds_epoch3.csv
+├── preds_epoch4.csv
+├── preds_epoch5.csv
+├── preds_epoch6.csv
+└── preds_epoch8.csv```
 
 ## 9. 실행 방법
 
