@@ -18,6 +18,7 @@ K-NN 같은 단어 빈도수 기반 모델은 "사회복지"의 '사회'와 "사
 **KorPatBERT는 오픈소스가 아니며** 저작권자의 별도 라이선스 허가가 필요해, 대회 기간 내 사용 권한을 발급받지 못해 테스트하지 못했습니다. 이에 따라 오픈소스이자 한국어 특화 모델인 **KoBERT**를 최종 채택했습니다.
 
 ### 모델 비교
+<img width="1600" height="900" alt="image" src="https://github.com/user-attachments/assets/362566e1-c264-43eb-8be3-6f7ca056c8fe" />
 
 | | BERT | KorPatBERT | KoBERT |
 |---|---|---|---|
@@ -42,6 +43,7 @@ KoBERT는 SKT Brain이 개발한 한국어 전용 BERT 모델입니다. 구글 B
 - **토크나이저**: 문장을 서브워드 단위로 쪼개 토큰 ID로 변환하는 전처리 엔진. 제목과 초록을 `[SEP]` 토큰으로 이어붙여 모델이 두 정보를 함께 보면서도 서로 다른 덩어리로 인식하도록 구성
 
 ## 5. 프로젝트 진행 흐름
+<img width="1600" height="900" alt="image" src="https://github.com/user-attachments/assets/aa7ccb02-26bf-4eb2-b6fa-c10dd7cf3614" />
 
 1. **텍스트 전처리**: `제목 + [SEP] + 초록` 형태로 결합. 제목은 핵심 주제, 초록은 내용·방법·결과를 담아 두 정보를 함께 활용
 2. **토크나이징**: 문장을 KoBERT 단어사전 ID로 변환, 라벨을 0~4 정수로 인코딩
@@ -49,6 +51,7 @@ KoBERT는 SKT Brain이 개발한 한국어 전용 BERT 모델입니다. 구글 B
 4. **성능 평가**: 검증 데이터에 대해 Accuracy, F1, Recall 계산 후 가장 성능이 좋은 epoch을 최종 모델로 선정
 
 ## 6. 최종 성능
+<img width="1600" height="900" alt="image" src="https://github.com/user-attachments/assets/6de3f199-df07-48e3-94df-d85ed87ddff4" />
 
 | 지표 | 학습(Train) | 검증(Validation) |
 |---|---|---|
