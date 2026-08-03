@@ -114,6 +114,20 @@ seoulcrime202601/
 bash
 pip install -r requirements.txt
 streamlit run app.py
+
+https://seoulcrime202601.streamlit.app
+
+
+
+
+
+
+
+
+
+
+
+
 서울 SafeCity — 범죄 위험도 분석 시스템
 범죄 발생 데이터, CCTV 설치 현황, 인구 데이터를 통합하여 서울시 25개 자치구의 범죄 위험도를 분석하고, CCTV 추가 설치 우선순위를 시뮬레이션하는 Streamlit 기반 대시보드입니다.
 
@@ -230,3 +244,5 @@ seoulcrime202601/
 bash
 pip install -r requirements.txt
 streamlit run app.py
+
+https://seoulcrime202601.streamlit.app
